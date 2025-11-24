@@ -13,6 +13,7 @@ const installBtn = document.getElementById('installBtn');
 const notificationBtn = document.getElementById('notificationBtn');
 const webPushBtn = document.getElementById('webPushBtn');
 const reminderBtn = document.getElementById('reminderBtn');
+const iosEmergencyBtn = document.getElementById('iosEmergencyBtn');
 const iosInfo = document.getElementById('iosInfo');
 
 // Variables para PWA
@@ -66,14 +67,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Mostrar opciones específicas para iOS y navegadores compatibles
-    if (isIOS() || checkWebPushSupport()) {
+    if (isIOS()) {
+        console.log('iOS detectado - configurando interfaz');
         iosInfo.style.display = 'block';
-        if (webPushBtn) webPushBtn.style.display = 'inline-block';
+        reminderBtn.style.display = 'inline-block';
+        reminderBtn.addEventListener('click', createIOSReminder);
         
-        if (isIOS()) {
-            reminderBtn.style.display = 'inline-block';
-            reminderBtn.addEventListener('click', createIOSReminder);
+        // Mostrar botón de emergencia siempre en iOS
+        if (iosEmergencyBtn) {
+            iosEmergencyBtn.style.display = 'inline-block';
+            iosEmergencyBtn.addEventListener('click', () => {
+                console.log('🍎 Activando modo iOS emergencia');
+                emergencyIOSSetup();
+                showNotification('🚨 Modo iOS Emergencia activado - Probando funcionalidad básica');
+            });
         }
+        
+        // Mostrar Web Push solo si es compatible
+        if (checkWebPushSupport()) {
+            if (webPushBtn) {
+                webPushBtn.style.display = 'inline-block';
+                console.log('Web Push soportado en iOS');
+            }
+        } else {
+            console.log('Web Push NO soportado en esta versión de iOS');
+        }
+    } else if (checkWebPushSupport()) {
+        if (webPushBtn) webPushBtn.style.display = 'inline-block';
     }
     
     // Detectar si ya está instalada
@@ -92,6 +112,8 @@ async function addTask() {
         taskInput.focus();
         return;
     }
+    
+    console.log('Añadiendo tarea:', taskText);
     
     const newTask = {
         id: ++taskIdCounter,

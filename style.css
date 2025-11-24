@@ -241,7 +241,7 @@ footer {
     flex-wrap: wrap;
 }
 
-.install-btn, .notification-btn, .webpush-btn, .reminder-btn {
+.install-btn, .notification-btn, .webpush-btn, .reminder-btn, .ios-emergency-btn {
     padding: 12px 24px;
     color: white;
     border: none;
@@ -270,7 +270,18 @@ footer {
     background: linear-gradient(45deg, #ff6b35, #f45d01);
 }
 
-.install-btn:hover, .notification-btn:hover, .webpush-btn:hover, .reminder-btn:hover {
+.ios-emergency-btn {
+    background: linear-gradient(45deg, #e74c3c, #c0392b);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+}
+
+.install-btn:hover, .notification-btn:hover, .webpush-btn:hover, .reminder-btn:hover, .ios-emergency-btn:hover {
     transform: translateY(-2px);
 }
 
@@ -288,6 +299,10 @@ footer {
 
 .reminder-btn:hover {
     box-shadow: 0 5px 15px rgba(255, 107, 53, 0.3);
+}
+
+.ios-emergency-btn:hover {
+    box-shadow: 0 5px 15px rgba(231, 76, 60, 0.5);
 }
 
 .notification-btn.active {
@@ -354,7 +369,7 @@ footer {
         flex-direction: column;
     }
     
-    .install-btn, .notification-btn, .webpush-btn, .reminder-btn {
+    .install-btn, .notification-btn, .webpush-btn, .reminder-btn, .ios-emergency-btn {
         min-width: auto;
     }
 }

@@ -74,12 +74,18 @@
                     <button id="reminderBtn" class="reminder-btn" style="display: none;">
                         ⏰ Crear Recordatorio iOS
                     </button>
+                    <button id="iosEmergencyBtn" class="ios-emergency-btn" style="display: none;">
+                        🍎 Modo iOS Emergencia
+                    </button>
                 </div>
             </div>
         </footer>
     </div>
 
     <!-- Scripts -->
+    <!-- iOS Debug (cargar primero) -->
+    <script src="ios-debug.js"></script>
+    
     <!-- Cliente Web Push -->
     <script src="web-push-client.js"></script>
     

@@ -14,15 +14,20 @@ const notificationBtn = document.getElementById('notificationBtn');
 
 // Variables para PWA
 let deferredPrompt;
+let messaging = null;
+let firebaseApp = null;
+let fcmToken = null;
 let notificationPermission = false;
-let swRegistration = null;
 
 // Inicialización
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadTasks();
     updateStats();
     updateDisplay();
-    initializeNotifications();
+    
+    // Inicializar Firebase y notificaciones
+    await initializeFirebase();
+    await initializeNotifications();
     
     // Event listeners
     addBtn.addEventListener('click', addTask);
@@ -52,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Función para añadir tarea
-function addTask() {
+async function addTask() {
     const taskText = taskInput.value.trim();
     
     if (taskText === '') {
@@ -78,7 +83,11 @@ function addTask() {
     
     // Feedback visual y notificación push
     showNotification('✅ Tarea añadida exitosamente');
-    sendPushNotification('📝 Nueva tarea creada', `"${taskText}" ha sido añadida a tu lista`);
+    
+    // Enviar notificación push real
+    if (fcmToken) {
+        await sendFirebaseNotification(`📝 Nueva tarea: "${taskText}"`, 'Tu tarea ha sido añadida exitosamente');
+    }
 }
 
 // Función para eliminar tarea
@@ -284,150 +293,244 @@ function showNotification(message, duration = 3000) {
     }, duration);
 }
 
-// === SISTEMA DE NOTIFICACIONES ===
+// === SISTEMA DE NOTIFICACIONES FIREBASE ===
+
+// Inicializar Firebase
+async function initializeFirebase() {
+    try {
+        // Cargar configuración
+        const response = await fetch('./firebase-config.json');
+        const firebaseConfig = await response.json();
+        
+        // Verificar si ya está inicializado
+        if (!firebase.apps.length) {
+            firebaseApp = firebase.initializeApp(firebaseConfig);
+        } else {
+            firebaseApp = firebase.app();
+        }
+        
+        // Inicializar Messaging
+        messaging = firebase.messaging();
+        
+        console.log('Firebase inicializado correctamente');
+        return true;
+        
+    } catch (error) {
+        console.error('Error inicializando Firebase:', error);
+        showNotification('⚠️ No se pudieron cargar las notificaciones push');
+        return false;
+    }
+}
 
 // Inicializar notificaciones
 async function initializeNotifications() {
-    // Verificar soporte de notificaciones
-    if (!('Notification' in window)) {
-        console.log('Este navegador no soporta notificaciones');
-        return;
-    }
-    
-    // Verificar soporte de Service Worker
-    if (!('serviceWorker' in navigator)) {
-        console.log('Service Worker no soportado');
+    // Verificar soporte básico
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        console.log('Notificaciones no soportadas');
+        notificationBtn.style.display = 'none';
         return;
     }
     
     try {
-        // Registrar Service Worker
-        swRegistration = await navigator.serviceWorker.register('sw.js');
-        console.log('Service Worker registrado para notificaciones');
+        // Verificar si Firebase está listo
+        if (!messaging) {
+            console.log('Firebase Messaging no disponible');
+            updateNotificationButton(false);
+            return;
+        }
         
-        // Solicitar permisos de notificación
+        // Solicitar permisos y token
         await requestNotificationPermission();
         
-        // Actualizar botón según estado actual
-        updateNotificationButton(notificationPermission);
+        // Configurar listener para mensajes en primer plano
+        messaging.onMessage((payload) => {
+            console.log('Mensaje recibido en primer plano:', payload);
+            
+            // Mostrar notificación custom cuando la app está abierta
+            showCustomNotification(
+                payload.notification.title,
+                payload.notification.body
+            );
+        });
         
     } catch (error) {
         console.error('Error inicializando notificaciones:', error);
+        updateNotificationButton(false);
     }
 }
 
-// Solicitar permisos de notificación
+// Solicitar permisos y obtener token FCM
 async function requestNotificationPermission() {
-    if (Notification.permission === 'granted') {
-        notificationPermission = true;
-        updateNotificationButton(true);
-        showNotification('🔔 Notificaciones activadas');
-        return;
-    }
-    
-    if (Notification.permission !== 'denied') {
+    try {
+        // Solicitar permisos
         const permission = await Notification.requestPermission();
         
         if (permission === 'granted') {
-            notificationPermission = true;
-            updateNotificationButton(true);
-            showNotification('🔔 ¡Notificaciones activadas! Recibirás alertas de nuevas tareas');
+            console.log('Permisos de notificación concedidos');
+            
+            // Obtener token FCM
+            try {
+                // Usar VAPID key si está disponible
+                const response = await fetch('./firebase-config.json');
+                const config = await response.json();
+                
+                if (config.vapidKey) {
+                    fcmToken = await messaging.getToken({ vapidKey: config.vapidKey });
+                } else {
+                    fcmToken = await messaging.getToken();
+                }
+                
+                console.log('Token FCM obtenido:', fcmToken);
+                
+                // Guardar token para uso posterior
+                localStorage.setItem('fcm-token', fcmToken);
+                
+                notificationPermission = true;
+                updateNotificationButton(true);
+                showNotification('🔔 ¡Notificaciones push activadas! Recibirás alertas incluso con la app cerrada');
+                
+                // En un entorno real, aquí enviarías el token a tu servidor
+                // await sendTokenToServer(fcmToken);
+                
+            } catch (tokenError) {
+                console.error('Error obteniendo token FCM:', tokenError);
+                showNotification('🔕 Error configurando notificaciones push. Usando notificaciones locales.');
+                
+                // Fallback a notificaciones locales
+                notificationPermission = true;
+                updateNotificationButton(true);
+            }
+            
         } else {
+            console.log('Permisos de notificación denegados');
             updateNotificationButton(false);
-            showNotification('🔕 Notificaciones desactivadas. Puedes activarlas desde configuración del navegador');
+            showNotification('🔕 Notificaciones desactivadas. Activa desde configuración del navegador.');
         }
-    } else {
+        
+    } catch (error) {
+        console.error('Error solicitando permisos:', error);
         updateNotificationButton(false);
-        showNotification('🔕 Notificaciones bloqueadas. Actívalas desde configuración del navegador');
+        showNotification('⚠️ Error configurando notificaciones');
     }
 }
 
-// Actualizar estado del botón de notificaciones
-function updateNotificationButton(enabled) {
-    if (enabled) {
-        notificationBtn.textContent = '🔔 Notificaciones ON';
-        notificationBtn.classList.add('active');
-        notificationBtn.disabled = false;
-    } else {
-        notificationBtn.textContent = '🔔 Activar Notificaciones';
-        notificationBtn.classList.remove('active');
-        notificationBtn.disabled = false;
+// Enviar notificación Firebase (simulación)
+async function sendFirebaseNotification(title, body) {
+    if (!fcmToken || !messaging) {
+        console.log('FCM no disponible, usando notificación local');
+        sendLocalNotification(title, body);
+        return;
+    }
+    
+    try {
+        // En un entorno real, esto se haría desde tu servidor
+        // Aquí simulamos la notificación directamente
+        
+        console.log('Simulando envío de notificación push:', { title, body, token: fcmToken });
+        
+        // Mostrar notificación local como fallback
+        sendLocalNotification(title, body);
+        
+        // En producción, aquí harías una llamada a tu API:
+        /*
+        const response = await fetch('/api/send-notification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                token: fcmToken,
+                title: title,
+                body: body,
+                icon: '/icons/icon-192x192.svg'
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Error enviando notificación');
+        }
+        */
+        
+    } catch (error) {
+        console.error('Error enviando notificación Firebase:', error);
+        sendLocalNotification(title, body);
     }
 }
 
-// Enviar notificación push
-function sendPushNotification(title, body, options = {}) {
+// Notificación local (fallback)
+function sendLocalNotification(title, body) {
     if (!notificationPermission || Notification.permission !== 'granted') {
         return;
     }
     
-    const defaultOptions = {
+    const options = {
         body: body,
         icon: 'icons/icon-192x192.svg',
         badge: 'icons/icon-72x72.svg',
         tag: 'task-notification',
         renotify: true,
         requireInteraction: false,
-        silent: false,
         vibrate: [200, 100, 200],
         data: {
             dateOfArrival: Date.now(),
             primaryKey: Math.random()
-        },
-        actions: [
-            {
-                action: 'view',
-                title: '👁️ Ver tareas',
-                icon: 'icons/icon-72x72.svg'
-            },
-            {
-                action: 'close',
-                title: '❌ Cerrar',
-                icon: 'icons/icon-72x72.svg'
-            }
-        ]
+        }
     };
     
-    const finalOptions = { ...defaultOptions, ...options };
-    
     try {
-        // Usar Service Worker para mostrar la notificación
-        if (swRegistration && swRegistration.showNotification) {
-            swRegistration.showNotification(title, finalOptions);
-        } else {
-            // Fallback para navegadores que no soportan SW notifications
-            new Notification(title, finalOptions);
-        }
-        
-        console.log('Notificación enviada:', title);
-        
+        new Notification(title, options);
+        console.log('Notificación local mostrada:', title);
     } catch (error) {
-        console.error('Error enviando notificación:', error);
+        console.error('Error mostrando notificación local:', error);
     }
 }
 
-// Manejar clics en notificaciones (para Service Worker)
-function handleNotificationClick(event) {
-    const notification = event.notification;
-    const action = event.action;
+// Mostrar notificación personalizada en la app
+function showCustomNotification(title, body) {
+    const customNotif = document.createElement('div');
+    customNotif.className = 'custom-notification';
+    customNotif.innerHTML = `
+        <div class="custom-notification-content">
+            <h4>${title}</h4>
+            <p>${body}</p>
+            <button onclick="this.parentElement.parentElement.remove()">✖</button>
+        </div>
+    `;
     
-    if (action === 'close') {
-        notification.close();
+    customNotif.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        border: 2px solid #4CAF50;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        z-index: 10000;
+        max-width: 300px;
+        animation: slideInRight 0.3s ease;
+    `;
+    
+    document.body.appendChild(customNotif);
+    
+    // Auto-remover después de 5 segundos
+    setTimeout(() => {
+        if (customNotif.parentNode) {
+            customNotif.remove();
+        }
+    }, 5000);
+}
+
+// Actualizar estado del botón de notificaciones
+function updateNotificationButton(enabled) {
+    if (enabled) {
+        notificationBtn.textContent = '🔔 Notificaciones PUSH ON';
+        notificationBtn.classList.add('active');
+        notificationBtn.disabled = false;
     } else {
-        // Abrir o enfocar la app
-        event.waitUntil(
-            clients.matchAll().then(clientList => {
-                for (const client of clientList) {
-                    if (client.url === '/' && 'focus' in client) {
-                        return client.focus();
-                    }
-                }
-                if (clients.openWindow) {
-                    return clients.openWindow('/');
-                }
-            })
-        );
-        notification.close();
+        notificationBtn.textContent = '🔔 Activar Notificaciones Push';
+        notificationBtn.classList.remove('active');
+        notificationBtn.disabled = false;
     }
 }
 
@@ -479,7 +582,11 @@ window.debugPWA = {
     
     // Funciones de notificaciones para debug
     testNotification() {
-        sendPushNotification('🔔 Notificación de prueba', 'Esta es una prueba del sistema de notificaciones');
+        if (fcmToken) {
+            sendFirebaseNotification('🗋 Notificación push de prueba', 'Esta es una prueba del sistema FCM');
+        } else {
+            sendLocalNotification('🗋 Notificación de prueba', 'Esta es una prueba del sistema local');
+        }
     },
     
     requestNotifications() {
@@ -490,7 +597,14 @@ window.debugPWA = {
         console.log('Estado de notificaciones:', {
             supported: 'Notification' in window,
             permission: Notification.permission,
-            enabled: notificationPermission
+            enabled: notificationPermission,
+            fcmToken: fcmToken,
+            firebaseReady: !!messaging
         });
+    },
+    
+    getFCMToken() {
+        console.log('Token FCM actual:', fcmToken);
+        return fcmToken;
     }
 };

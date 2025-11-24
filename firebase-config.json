@@ -1,0 +1,9 @@
+{
+  "apiKey": "TU_API_KEY_AQUI",
+  "authDomain": "mi-pwa-tareas.firebaseapp.com",
+  "projectId": "mi-pwa-tareas",
+  "storageBucket": "mi-pwa-tareas.appspot.com",
+  "messagingSenderId": "123456789",
+  "appId": "1:123456789:web:abcdef123456789",
+  "vapidKey": "TU_VAPID_KEY_AQUI"
+}

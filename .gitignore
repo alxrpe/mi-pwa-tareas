@@ -28,3 +28,6 @@ node_modules/
 # Archivos de build (si se añaden en el futuro)
 dist/
 build/
+
+# Configuración Firebase real (mantener el template)
+# firebase-config-real.json

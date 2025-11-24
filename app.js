@@ -24,8 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateStats();
     updateDisplay();
     
-    // Inicializar OneSignal y notificaciones
-    await initializeOneSignal();
+    // Esperar a que OneSignal esté listo
+    await waitForOneSignal();
     await initializeNotifications();
     
     // Event listeners
@@ -294,66 +294,22 @@ function showNotification(message, duration = 3000) {
 
 // === SISTEMA DE NOTIFICACIONES ONESIGNAL ===
 
-// Inicializar OneSignal
-async function initializeOneSignal() {
-    try {
-        // Verificar que OneSignal esté cargado
-        if (typeof window.OneSignalDeferred === 'undefined') {
-            console.log('OneSignal SDK v16 no está cargado');
-            return false;
-        }
-
-        // Cargar configuración
-        const response = await fetch('./onesignal-config.json');
-        const config = await response.json();
-        
-        // Usar el nuevo método de inicialización de OneSignal v16
-        window.OneSignalDeferred = window.OneSignalDeferred || [];
-        window.OneSignalDeferred.push(async function(OneSignal) {
-            await OneSignal.init({
-                appId: config.appId,
-                safari_web_id: config.safari_web_id,
-                allowLocalhostAsSecureOrigin: true,
-                notifyButton: {
-                    enable: false // Usamos nuestro propio botón
-                }
-            });
-            
-            // Guardar referencia global
-            window.OneSignalInstance = OneSignal;
-            OneSignal = OneSignal;
-            isOneSignalReady = true;
-            
-            console.log('OneSignal v16 inicializado correctamente');
-            
-            // Configurar listeners
-            OneSignal.Notifications.addEventListener('permissionChange', function(event) {
-                console.log('Permisos de notificación cambiaron:', event);
-                const isSubscribed = event.permission === 'granted';
-                notificationPermission = isSubscribed;
-                updateNotificationButton(isSubscribed);
-                
-                if (isSubscribed) {
-                    showNotification('🔔 ¡Notificaciones push activadas exitosamente!');
-                    // Mostrar información de debug
-                    OneSignal.User.PushSubscription.id.then(function(userId) {
-                        if (userId) {
-                            console.log('OneSignal User ID:', userId);
-                            showNotification(`✅ Registrado en OneSignal. ID: ${userId.substring(0, 8)}...`);
-                        }
-                    });
-                }
-            });
-        });
-        
-        isOneSignalReady = true;
-        return true;
-        
-    } catch (error) {
-        console.error('Error inicializando OneSignal v16:', error);
-        showNotification('⚠️ No se pudieron cargar las notificaciones push');
-        return false;
-    }
+// Esperar a que OneSignal esté disponible
+async function waitForOneSignal() {
+    return new Promise((resolve) => {
+        const checkOneSignal = () => {
+            if (window.OneSignalInstance && window.isOneSignalReady) {
+                OneSignal = window.OneSignalInstance;
+                isOneSignalReady = true;
+                console.log('OneSignal está listo para usar');
+                resolve();
+            } else {
+                console.log('Esperando a OneSignal...');
+                setTimeout(checkOneSignal, 100);
+            }
+        };
+        checkOneSignal();
+    });
 }
 
 // Inicializar notificaciones
@@ -409,45 +365,72 @@ async function initializeNotifications() {
 // Solicitar permisos y suscribirse a OneSignal
 async function requestNotificationPermission() {
     try {
-        if (!isOneSignalReady || !window.OneSignalInstance) {
-            showNotification('❌ OneSignal no está configurado. Revisa la configuración.');
+        if (!isOneSignalReady || !OneSignal) {
+            console.log('OneSignal no está listo, usando notificaciones locales');
+            // Fallback a notificaciones locales
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                notificationPermission = true;
+                updateNotificationButton(true);
+                showNotification('🔔 Notificaciones locales activadas');
+            } else {
+                showNotification('❌ Notificaciones denegadas');
+            }
             return;
         }
 
-        const OneSignal = window.OneSignalInstance;
+        console.log('Solicitando permisos de OneSignal...');
 
-        // Verificar si ya está suscrito
-        const permission = await OneSignal.Notifications.permission;
+        // Verificar permisos actuales
+        const currentPermission = await OneSignal.Notifications.permission;
+        console.log('Permisos actuales:', currentPermission);
         
-        if (permission === 'granted') {
-            showNotification('✅ Ya tienes las notificaciones activadas');
+        if (currentPermission === 'granted') {
             notificationPermission = true;
             updateNotificationButton(true);
+            showNotification('✅ Ya tienes las notificaciones activadas');
             return;
         }
 
-        // Solicitar permisos de notificación
+        // Solicitar permisos
         const result = await OneSignal.Notifications.requestPermission();
+        console.log('Resultado de permisos:', result);
         
         if (result === 'granted') {
             notificationPermission = true;
             updateNotificationButton(true);
             showNotification('🔔 ¡Notificaciones push activadas exitosamente!');
+            
+            // Obtener y mostrar User ID
+            try {
+                const userId = await OneSignal.User.PushSubscription.id;
+                if (userId) {
+                    console.log('OneSignal User ID:', userId);
+                    showNotification(`✅ Registrado en OneSignal. ID: ${userId.substring(0, 8)}...`);
+                }
+            } catch (idError) {
+                console.log('No se pudo obtener User ID:', idError);
+            }
         } else {
             updateNotificationButton(false);
-            showNotification('🔕 Notificaciones denegadas. Activa desde configuración del navegador.');
+            showNotification('🔕 Notificaciones denegadas');
         }
         
     } catch (error) {
-        console.error('Error solicitando permisos:', error);
-        showNotification('❌ Error activando notificaciones. Intenta desde configuración del navegador.');
+        console.error('Error completo solicitando permisos:', error);
+        showNotification(`❌ Error: ${error.message}`);
         
         // Fallback a notificaciones locales
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            notificationPermission = true;
-            updateNotificationButton(true);
-            showNotification('🔔 Notificaciones locales activadas como alternativa');
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                notificationPermission = true;
+                updateNotificationButton(true);
+                showNotification('🔔 Notificaciones locales activadas como alternativa');
+            }
+        } catch (localError) {
+            console.error('Error con notificaciones locales:', localError);
+            showNotification('❌ No se pueden activar notificaciones');
         }
     }
 }

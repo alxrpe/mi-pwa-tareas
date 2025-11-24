@@ -68,6 +68,25 @@
     <!-- Scripts -->
     <!-- OneSignal SDK v16 (Actualizado) -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "750dbc4d-03cd-4311-840d-471bd5059011",
+          safari_web_id: "web.onesignal.auto.599df49f-4478-46e8-9089-3c95d63b63cf",
+          allowLocalhostAsSecureOrigin: true,
+          notifyButton: {
+            enable: false,
+          },
+        });
+        
+        // Hacer OneSignal disponible globalmente
+        window.OneSignalInstance = OneSignal;
+        window.isOneSignalReady = true;
+        
+        console.log('OneSignal inicializado desde HTML');
+      });
+    </script>
     
     <script src="app.js"></script>
     <script>

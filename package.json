@@ -1,0 +1,38 @@
+{
+  "name": "mi-pwa-tareas",
+  "version": "2.0.0",
+  "description": "PWA de gestión de tareas con Web Push Protocol y OneSignal",
+  "main": "web-push-server.js",
+  "scripts": {
+    "start": "node web-push-server.js",
+    "dev": "npx http-server . -p 3000 -c-1",
+    "install-deps": "npm install",
+    "generate-vapid": "npx web-push generate-vapid-keys"
+  },
+  "keywords": [
+    "pwa",
+    "web-push",
+    "notifications",
+    "onesignal",
+    "javascript",
+    "task-management"
+  ],
+  "author": "Tu nombre",
+  "license": "MIT",
+  "dependencies": {
+    "web-push": "^3.6.7",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alxrpe/mi-pwa-tareas.git"
+  },
+  "homepage": "https://alxrpe.github.io/mi-pwa-tareas/"
+}

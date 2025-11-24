@@ -11,6 +11,9 @@ const completedCount = document.getElementById('completedCount');
 const emptyState = document.getElementById('emptyState');
 const installBtn = document.getElementById('installBtn');
 const notificationBtn = document.getElementById('notificationBtn');
+const webPushBtn = document.getElementById('webPushBtn');
+const reminderBtn = document.getElementById('reminderBtn');
+const iosInfo = document.getElementById('iosInfo');
 
 // Variables para PWA
 let deferredPrompt;
@@ -46,6 +49,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     installBtn.addEventListener('click', installPWA);
     notificationBtn.addEventListener('click', requestNotificationPermission);
+    
+    // Event listener para Web Push
+    if (webPushBtn) {
+        webPushBtn.addEventListener('click', async () => {
+            try {
+                await subscribeToWebPush();
+                showNotification('🚀 Web Push activado exitosamente (compatible con iOS)');
+                webPushBtn.textContent = '✅ Web Push Activo';
+                webPushBtn.disabled = true;
+            } catch (error) {
+                console.error('Error activando Web Push:', error);
+                showNotification(`❌ Error activando Web Push: ${error.message}`);
+            }
+        });
+    }
+    
+    // Mostrar opciones específicas para iOS y navegadores compatibles
+    if (isIOS() || checkWebPushSupport()) {
+        iosInfo.style.display = 'block';
+        if (webPushBtn) webPushBtn.style.display = 'inline-block';
+        
+        if (isIOS()) {
+            reminderBtn.style.display = 'inline-block';
+            reminderBtn.addEventListener('click', createIOSReminder);
+        }
+    }
     
     // Detectar si ya está instalada
     window.addEventListener('appinstalled', () => {
@@ -83,10 +112,11 @@ async function addTask() {
     // Feedback visual y notificación push
     showNotification('✅ Tarea añadida exitosamente');
     
-    // Enviar notificación push real
-    if (isOneSignalReady && notificationPermission) {
-        await sendOneSignalNotification(`📝 Nueva tarea: "${taskText}"`, 'Tu tarea ha sido añadida exitosamente');
-    }
+    // Enviar notificación usando el sistema unificado (Web Push + OneSignal + Local)
+    await sendUnifiedNotification(
+        `📝 Nueva tarea creada`,
+        `"${taskText}" - Tu tarea ha sido añadida exitosamente`
+    );
 }
 
 // Función para eliminar tarea
@@ -362,9 +392,31 @@ async function initializeNotifications() {
     }
 }
 
+// Detectar iOS y ajustar comportamiento
+function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 // Solicitar permisos y suscribirse a OneSignal
 async function requestNotificationPermission() {
     try {
+        // Detectar iOS y mostrar mensaje específico
+        if (isIOS()) {
+            showNotification('📱 iOS detectado: Notificaciones limitadas a cuando la app está abierta');
+            
+            // En iOS, usar solo notificaciones locales
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                notificationPermission = true;
+                updateNotificationButton(true);
+                showNotification('🔔 Notificaciones iOS activadas (solo con app abierta)');
+            } else {
+                showNotification('❌ Notificaciones denegadas en iOS');
+            }
+            return;
+        }
+
         if (!isOneSignalReady || !OneSignal) {
             console.log('OneSignal no está listo, usando notificaciones locales');
             // Fallback a notificaciones locales
@@ -537,7 +589,71 @@ function showCustomNotification(title, body) {
     }, 5000);
 }
 
-// Actualizar estado del botón de notificaciones
+// Crear recordatorio alternativo para iOS
+function createIOSReminder() {
+    const taskText = taskInput.value.trim();
+    
+    if (!taskText) {
+        showNotification('📝 Escribe una tarea primero para crear un recordatorio');
+        taskInput.focus();
+        return;
+    }
+    
+    // Crear evento de calendario para iOS
+    const startDate = new Date();
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hora después
+    
+    // Formato de fecha para iOS
+    const formatDate = (date) => {
+        return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
+    
+    const calendarUrl = `data:text/calendar;charset=utf8,BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Mi PWA Tareas//NONSGML v1.0//EN
+BEGIN:VEVENT
+UID:${Date.now()}@mipwa.com
+DTSTAMP:${formatDate(new Date())}
+DTSTART:${formatDate(startDate)}
+DTEND:${formatDate(endDate)}
+SUMMARY:📋 Tarea: ${taskText}
+DESCRIPTION:Recordatorio creado desde Mi PWA Tareas
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Recordatorio: ${taskText}
+TRIGGER:-PT15M
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+    
+    try {
+        // Crear link de descarga
+        const link = document.createElement('a');
+        link.href = calendarUrl;
+        link.download = `tarea-${Date.now()}.ics`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification('📅 Archivo de calendario creado. Ábrelo para añadir el recordatorio a iOS');
+        
+    } catch (error) {
+        console.error('Error creando recordatorio:', error);
+        showNotification('❌ No se pudo crear el recordatorio automático');
+        
+        // Fallback: mostrar instrucciones
+        alert(`📱 Para crear un recordatorio en iOS:
+        
+1. Abre la app "Recordatorios"
+2. Toca "+" para nueva lista o recordatorio
+3. Escribe: "${taskText}"
+4. Configura fecha/hora si quieres
+5. Guarda el recordatorio
+
+¡Listo! 🎉`);
+    }
+}
 function updateNotificationButton(enabled) {
     if (enabled) {
         notificationBtn.textContent = '🔔 Notificaciones PUSH ON';
@@ -623,4 +739,221 @@ window.debugPWA = {
         console.log('Token FCM actual:', fcmToken);
         return fcmToken;
     }
+};
+
+// === WEB PUSH PROTOCOL ===
+
+// Clave pública VAPID para Web Push
+const VAPID_PUBLIC_KEY = 'BO2FX9UNFs438_24zaPhzwSxTGzgxwUdnk9UhdFOgRiyZ6uRF9ag3u0pIzNiP3WGN9G00Rv1TcGOCXV6KC4LNoY';
+
+// Variables para Web Push
+let webPushSubscription = null;
+let isWebPushSupported = false;
+
+// Verificar soporte de Web Push
+function checkWebPushSupport() {
+    isWebPushSupported = 'serviceWorker' in navigator && 
+                        'PushManager' in window && 
+                        'Notification' in window;
+    
+    console.log('Web Push soportado:', isWebPushSupported);
+    return isWebPushSupported;
+}
+
+// Convertir clave VAPID a Uint8Array
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// Suscribirse a Web Push
+async function subscribeToWebPush() {
+    try {
+        if (!checkWebPushSupport()) {
+            throw new Error('Web Push no soportado');
+        }
+
+        // Registrar Service Worker si no está registrado
+        if (!('serviceWorker' in navigator)) {
+            throw new Error('Service Worker no soportado');
+        }
+
+        const registration = await navigator.serviceWorker.register('./sw.js');
+        console.log('Service Worker registrado para Web Push');
+
+        // Esperar a que esté listo
+        await navigator.serviceWorker.ready;
+
+        // Verificar permisos de notificación
+        let permission = Notification.permission;
+        if (permission === 'default') {
+            permission = await Notification.requestPermission();
+        }
+
+        if (permission !== 'granted') {
+            throw new Error('Permisos de notificación denegados');
+        }
+
+        // Suscribirse a push notifications
+        const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        
+        webPushSubscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: applicationServerKey
+        });
+
+        console.log('Suscrito a Web Push:', webPushSubscription);
+        
+        // Guardar suscripción en localStorage
+        localStorage.setItem('webPushSubscription', JSON.stringify(webPushSubscription));
+        
+        return webPushSubscription;
+        
+    } catch (error) {
+        console.error('Error suscribiendo a Web Push:', error);
+        throw error;
+    }
+}
+
+// Enviar notificación Web Push
+async function sendWebPushNotification(title, body, data = {}) {
+    try {
+        if (!webPushSubscription) {
+            // Intentar cargar suscripción guardada
+            const saved = localStorage.getItem('webPushSubscription');
+            if (saved) {
+                webPushSubscription = JSON.parse(saved);
+            } else {
+                throw new Error('No hay suscripción Web Push');
+            }
+        }
+
+        const notificationData = {
+            title: title,
+            body: body,
+            icon: './icons/icon-192x192.svg',
+            badge: './icons/icon-192x192.svg',
+            tag: 'web-push-notification',
+            requireInteraction: false,
+            data: data,
+            timestamp: Date.now()
+        };
+
+        // Usar el cliente Web Push para enviar notificación (sin servidor)
+        if (window.webPushClient) {
+            const result = await window.webPushClient.sendNotification(webPushSubscription, notificationData);
+            
+            if (result.success) {
+                console.log('Notificación Web Push enviada exitosamente via cliente');
+                return true;
+            } else {
+                throw new Error(result.message || 'Error enviando notificación');
+            }
+        } else {
+            throw new Error('Cliente Web Push no disponible');
+        }
+
+    } catch (error) {
+        console.error('Error enviando Web Push:', error);
+        
+        // Fallback a notificación local si Web Push falla
+        if (Notification.permission === 'granted') {
+            new Notification(title, {
+                body: body,
+                icon: './icons/icon-192x192.svg',
+                tag: 'fallback-notification'
+            });
+            });
+        }
+        
+        return false;
+    }
+}
+
+// Inicializar Web Push
+async function initializeWebPush() {
+    try {
+        if (!checkWebPushSupport()) {
+            console.log('Web Push no soportado en este navegador');
+            return false;
+        }
+
+        // Verificar si ya hay una suscripción guardada
+        const savedSubscription = localStorage.getItem('webPushSubscription');
+        if (savedSubscription) {
+            webPushSubscription = JSON.parse(savedSubscription);
+            console.log('Suscripción Web Push restaurada');
+            return true;
+        }
+
+        return false;
+    } catch (error) {
+        console.error('Error inicializando Web Push:', error);
+        return false;
+    }
+}
+
+// Función unificada de notificaciones que usa el mejor método disponible
+async function sendUnifiedNotification(title, body) {
+    console.log('Enviando notificación unificada:', title, body);
+    
+    // 1. Intentar Web Push primero (mejor compatibilidad con iOS)
+    try {
+        if (isWebPushSupported && webPushSubscription) {
+            const success = await sendWebPushNotification(title, body);
+            if (success) {
+                console.log('Notificación enviada via Web Push');
+                return;
+            }
+        }
+    } catch (error) {
+        console.log('Web Push falló:', error);
+    }
+    
+    // 2. Fallback a OneSignal
+    try {
+        if (isOneSignalReady && notificationPermission) {
+            await sendOneSignalNotification(title, body);
+            console.log('Notificación enviada via OneSignal');
+            return;
+        }
+    } catch (error) {
+        console.log('OneSignal falló:', error);
+    }
+    
+    // 3. Fallback final a notificación local
+    try {
+        if (Notification.permission === 'granted') {
+            new Notification(title, {
+                body: body,
+                icon: './icons/icon-192x192.svg',
+                tag: 'local-notification'
+            });
+            console.log('Notificación enviada localmente');
+        }
+    } catch (error) {
+        console.log('Notificación local falló:', error);
+    }
+}
+
+// Actualizar la función de inicialización para incluir Web Push
+const originalInitializeNotifications = initializeNotifications;
+initializeNotifications = async function() {
+    // Inicializar Web Push primero
+    await initializeWebPush();
+    
+    // Luego inicializar OneSignal
+    await originalInitializeNotifications();
+    
+    console.log('Sistema de notificaciones híbrido inicializado');
 };

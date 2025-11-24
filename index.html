@@ -53,6 +53,14 @@
         <footer>
             <div class="pwa-info">
                 <p>💡 <strong>Tip:</strong> Instala esta app en tu dispositivo para usarla offline</p>
+                <div class="ios-info" id="iosInfo" style="display: none;">
+                    <p>📱 <strong>iOS:</strong> Las notificaciones push están limitadas por Apple. Considera:</p>
+                    <ul style="text-align: left; margin: 10px 0;">
+                        <li>🔔 Usar recordatorios del sistema iOS</li>
+                        <li>📅 Añadir eventos al Calendario</li>
+                        <li>⏰ Configurar alarmas en Reloj</li>
+                    </ul>
+                </div>
                 <div class="action-buttons">
                     <button id="installBtn" class="install-btn" style="display: none;">
                         📱 Instalar App
@@ -60,12 +68,21 @@
                     <button id="notificationBtn" class="notification-btn">
                         🔔 Activar Notificaciones
                     </button>
+                    <button id="webPushBtn" class="webpush-btn" style="display: none;">
+                        🚀 Activar Web Push (iOS Compatible)
+                    </button>
+                    <button id="reminderBtn" class="reminder-btn" style="display: none;">
+                        ⏰ Crear Recordatorio iOS
+                    </button>
                 </div>
             </div>
         </footer>
     </div>
 
     <!-- Scripts -->
+    <!-- Cliente Web Push -->
+    <script src="web-push-client.js"></script>
+    
     <!-- OneSignal SDK v16 (Actualizado) -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>

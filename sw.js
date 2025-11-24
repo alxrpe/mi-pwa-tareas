@@ -94,8 +94,36 @@ self.addEventListener('fetch', event => {
 
 // Manejar mensajes desde la aplicación
 self.addEventListener('message', event => {
+  console.log('Service Worker recibió mensaje:', event.data);
+  
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  // Manejar solicitud de mostrar notificación
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const notification = event.data.notification;
+    
+    self.registration.showNotification(notification.title, {
+      body: notification.body,
+      icon: notification.icon || './icons/icon-192x192.svg',
+      badge: notification.badge || './icons/icon-192x192.svg',
+      tag: notification.tag || 'web-push',
+      requireInteraction: notification.requireInteraction || false,
+      silent: notification.silent || false,
+      data: notification.data || {},
+      actions: [
+        {
+          action: 'view',
+          title: 'Ver',
+          icon: './icons/icon-192x192.svg'
+        },
+        {
+          action: 'close',
+          title: 'Cerrar'
+        }
+      ]
+    });
   }
 });
 
@@ -141,4 +169,87 @@ self.addEventListener('notificationclose', event => {
   
   // Aquí podríamos enviar estadísticas de engagement
   // trackNotificationInteraction('closed', event.notification.tag);
+});
+
+// === WEB PUSH PROTOCOL ===
+
+// Manejar eventos push de Web Push Protocol
+self.addEventListener('push', event => {
+  console.log('Evento push recibido:', event);
+  
+  let notificationData = {
+    title: 'Mi PWA Tareas',
+    body: 'Nueva notificación',
+    icon: './icons/icon-192x192.svg',
+    badge: './icons/icon-192x192.svg',
+    tag: 'default',
+    requireInteraction: false,
+    silent: false
+  };
+  
+  // Si hay datos en el evento push, usarlos
+  if (event.data) {
+    try {
+      const pushData = event.data.json();
+      notificationData = {
+        ...notificationData,
+        ...pushData
+      };
+    } catch (e) {
+      console.log('Error parseando datos push:', e);
+      // Usar datos por defecto si hay error
+      notificationData.body = event.data.text() || notificationData.body;
+    }
+  }
+  
+  console.log('Mostrando notificación:', notificationData);
+  
+  event.waitUntil(
+    self.registration.showNotification(notificationData.title, {
+      body: notificationData.body,
+      icon: notificationData.icon,
+      badge: notificationData.badge,
+      tag: notificationData.tag,
+      requireInteraction: notificationData.requireInteraction,
+      silent: notificationData.silent,
+      data: notificationData.data || {},
+      actions: [
+        {
+          action: 'view',
+          title: 'Ver',
+          icon: './icons/icon-192x192.svg'
+        },
+        {
+          action: 'close',
+          title: 'Cerrar'
+        }
+      ]
+    })
+  );
+});
+
+// Manejar errores de suscripción push
+self.addEventListener('pushsubscriptionchange', event => {
+  console.log('Suscripción push cambió:', event);
+  
+  event.waitUntil(
+    // Resubscribirse automáticamente
+    self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: 'BO2FX9UNFs438_24zaPhzwSxTGzgxwUdnk9UhdFOgRiyZ6uRF9ag3u0pIzNiP3WGN9G00Rv1TcGOCXV6KC4LNoY'
+    }).then(subscription => {
+      console.log('Resubscrito a push notifications');
+      
+      // Enviar nueva suscripción al servidor
+      return fetch('/api/update-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(subscription)
+      });
+    }).catch(err => {
+      console.log('Error resubscribiendo:', err);
+    })
+  );
 });

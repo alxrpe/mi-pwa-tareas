@@ -14,10 +14,9 @@ const notificationBtn = document.getElementById('notificationBtn');
 
 // Variables para PWA
 let deferredPrompt;
-let messaging = null;
-let firebaseApp = null;
-let fcmToken = null;
+let OneSignal = null;
 let notificationPermission = false;
+let isOneSignalReady = false;
 
 // Inicialización
 document.addEventListener('DOMContentLoaded', async () => {
@@ -25,8 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateStats();
     updateDisplay();
     
-    // Inicializar Firebase y notificaciones
-    await initializeFirebase();
+    // Inicializar OneSignal y notificaciones
+    await initializeOneSignal();
     await initializeNotifications();
     
     // Event listeners
@@ -85,8 +84,8 @@ async function addTask() {
     showNotification('✅ Tarea añadida exitosamente');
     
     // Enviar notificación push real
-    if (fcmToken) {
-        await sendFirebaseNotification(`📝 Nueva tarea: "${taskText}"`, 'Tu tarea ha sido añadida exitosamente');
+    if (isOneSignalReady && notificationPermission) {
+        await sendOneSignalNotification(`📝 Nueva tarea: "${taskText}"`, 'Tu tarea ha sido añadida exitosamente');
     }
 }
 
@@ -293,30 +292,39 @@ function showNotification(message, duration = 3000) {
     }, duration);
 }
 
-// === SISTEMA DE NOTIFICACIONES FIREBASE ===
+// === SISTEMA DE NOTIFICACIONES ONESIGNAL ===
 
-// Inicializar Firebase
-async function initializeFirebase() {
+// Inicializar OneSignal
+async function initializeOneSignal() {
     try {
-        // Cargar configuración
-        const response = await fetch('./firebase-config.json');
-        const firebaseConfig = await response.json();
-        
-        // Verificar si ya está inicializado
-        if (!firebase.apps.length) {
-            firebaseApp = firebase.initializeApp(firebaseConfig);
-        } else {
-            firebaseApp = firebase.app();
+        // Verificar que OneSignal esté cargado
+        if (typeof window.OneSignal === 'undefined') {
+            console.log('OneSignal SDK no está cargado');
+            return false;
         }
+
+        // Cargar configuración
+        const response = await fetch('./onesignal-config.json');
+        const config = await response.json();
         
-        // Inicializar Messaging
-        messaging = firebase.messaging();
+        // Inicializar OneSignal
+        await window.OneSignal.init({
+            appId: config.appId,
+            safari_web_id: config.safari_web_id,
+            notifyButton: {
+                enable: false // Usamos nuestro propio botón
+            },
+            allowLocalhostAsSecureOrigin: true, // Para testing local
+        });
+
+        OneSignal = window.OneSignal;
+        isOneSignalReady = true;
         
-        console.log('Firebase inicializado correctamente');
+        console.log('OneSignal inicializado correctamente');
         return true;
         
     } catch (error) {
-        console.error('Error inicializando Firebase:', error);
+        console.error('Error inicializando OneSignal:', error);
         showNotification('⚠️ No se pudieron cargar las notificaciones push');
         return false;
     }
@@ -332,25 +340,33 @@ async function initializeNotifications() {
     }
     
     try {
-        // Verificar si Firebase está listo
-        if (!messaging) {
-            console.log('Firebase Messaging no disponible');
+        // Verificar si OneSignal está listo
+        if (!isOneSignalReady || !OneSignal) {
+            console.log('OneSignal no disponible, usando notificaciones locales');
             updateNotificationButton(false);
             return;
         }
         
-        // Solicitar permisos y token
-        await requestNotificationPermission();
+        // Verificar estado de suscripción
+        const isSubscribed = await OneSignal.isPushNotificationsEnabled();
         
-        // Configurar listener para mensajes en primer plano
-        messaging.onMessage((payload) => {
-            console.log('Mensaje recibido en primer plano:', payload);
+        if (isSubscribed) {
+            notificationPermission = true;
+            updateNotificationButton(true);
+            showNotification('🔔 Notificaciones push ya activadas');
+        } else {
+            updateNotificationButton(false);
+        }
+        
+        // Listener para cambios de suscripción
+        OneSignal.on('subscriptionChange', function(isSubscribed) {
+            console.log('Estado de suscripción cambió:', isSubscribed);
+            notificationPermission = isSubscribed;
+            updateNotificationButton(isSubscribed);
             
-            // Mostrar notificación custom cuando la app está abierta
-            showCustomNotification(
-                payload.notification.title,
-                payload.notification.body
-            );
+            if (isSubscribed) {
+                showNotification('🔔 ¡Notificaciones push activadas exitosamente!');
+            }
         });
         
     } catch (error) {
@@ -359,101 +375,88 @@ async function initializeNotifications() {
     }
 }
 
-// Solicitar permisos y obtener token FCM
+// Solicitar permisos y suscribirse a OneSignal
 async function requestNotificationPermission() {
     try {
-        // Solicitar permisos
-        const permission = await Notification.requestPermission();
-        
-        if (permission === 'granted') {
-            console.log('Permisos de notificación concedidos');
-            
-            // Obtener token FCM
-            try {
-                // Usar VAPID key si está disponible
-                const response = await fetch('./firebase-config.json');
-                const config = await response.json();
-                
-                if (config.vapidKey) {
-                    fcmToken = await messaging.getToken({ vapidKey: config.vapidKey });
-                } else {
-                    fcmToken = await messaging.getToken();
-                }
-                
-                console.log('Token FCM obtenido:', fcmToken);
-                
-                // Guardar token para uso posterior
-                localStorage.setItem('fcm-token', fcmToken);
-                
-                notificationPermission = true;
-                updateNotificationButton(true);
-                showNotification('🔔 ¡Notificaciones push activadas! Recibirás alertas incluso con la app cerrada');
-                
-                // En un entorno real, aquí enviarías el token a tu servidor
-                // await sendTokenToServer(fcmToken);
-                
-            } catch (tokenError) {
-                console.error('Error obteniendo token FCM:', tokenError);
-                showNotification('🔕 Error configurando notificaciones push. Usando notificaciones locales.');
-                
-                // Fallback a notificaciones locales
-                notificationPermission = true;
-                updateNotificationButton(true);
-            }
-            
-        } else {
-            console.log('Permisos de notificación denegados');
-            updateNotificationButton(false);
-            showNotification('🔕 Notificaciones desactivadas. Activa desde configuración del navegador.');
+        if (!isOneSignalReady || !OneSignal) {
+            showNotification('❌ OneSignal no está configurado. Revisa la configuración.');
+            return;
         }
+
+        // Verificar si ya está suscrito
+        const isSubscribed = await OneSignal.isPushNotificationsEnabled();
+        
+        if (isSubscribed) {
+            showNotification('✅ Ya tienes las notificaciones activadas');
+            return;
+        }
+
+        // Solicitar permisos de notificación
+        await OneSignal.showSlidedownPrompt();
+        
+        // Alternativamente, suscribir directamente:
+        // await OneSignal.registerForPushNotifications();
         
     } catch (error) {
         console.error('Error solicitando permisos:', error);
-        updateNotificationButton(false);
-        showNotification('⚠️ Error configurando notificaciones');
+        showNotification('❌ Error activando notificaciones. Intenta desde configuración del navegador.');
+        
+        // Fallback a notificaciones locales
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            notificationPermission = true;
+            updateNotificationButton(true);
+            showNotification('🔔 Notificaciones locales activadas como alternativa');
+        }
     }
 }
 
-// Enviar notificación Firebase (simulación)
-async function sendFirebaseNotification(title, body) {
-    if (!fcmToken || !messaging) {
-        console.log('FCM no disponible, usando notificación local');
-        sendLocalNotification(title, body);
-        return;
-    }
-    
+// Enviar notificación OneSignal
+async function sendOneSignalNotification(title, message) {
     try {
-        // En un entorno real, esto se haría desde tu servidor
-        // Aquí simulamos la notificación directamente
+        if (!isOneSignalReady || !OneSignal) {
+            console.log('OneSignal no disponible, usando notificación local');
+            sendLocalNotification(title, message);
+            return;
+        }
+
+        // Obtener el Player ID (usuario único)
+        const playerId = await OneSignal.getUserId();
         
-        console.log('Simulando envío de notificación push:', { title, body, token: fcmToken });
+        if (!playerId) {
+            console.log('Usuario no suscrito, usando notificación local');
+            sendLocalNotification(title, message);
+            return;
+        }
+
+        // En un entorno real, esto se haría desde tu servidor backend
+        // OneSignal requiere una clave de API REST para enviar desde el cliente
         
-        // Mostrar notificación local como fallback
-        sendLocalNotification(title, body);
+        console.log('OneSignal Player ID:', playerId);
+        console.log('Notificación para enviar:', { title, message });
         
-        // En producción, aquí harías una llamada a tu API:
+        // Por ahora, mostrar notificación local + mensaje de info
+        sendLocalNotification(title, message);
+        showNotification('📤 Notificación enviada (en desarrollo)');
+        
+        // TODO: Implementar llamada a API backend para enviar vía OneSignal
         /*
-        const response = await fetch('/api/send-notification', {
+        const response = await fetch('/api/send-onesignal-notification', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                token: fcmToken,
+                player_id: playerId,
                 title: title,
-                body: body,
-                icon: '/icons/icon-192x192.svg'
+                message: message
             })
         });
-        
-        if (!response.ok) {
-            throw new Error('Error enviando notificación');
-        }
         */
         
     } catch (error) {
-        console.error('Error enviando notificación Firebase:', error);
-        sendLocalNotification(title, body);
+        console.error('Error enviando notificación OneSignal:', error);
+        sendLocalNotification(title, message);
     }
 }
 

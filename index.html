@@ -63,24 +63,14 @@
     </div>
 
     <!-- Scripts -->
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script>
+    <!-- OneSignal SDK -->
+    <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
     
     <script src="app.js"></script>
     <script>
-        // Registro del Service Worker para Firebase
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('firebase-messaging-sw.js')
-                    .then(registration => {
-                        console.log('Firebase SW registrado exitosamente:', registration);
-                    })
-                    .catch(registrationError => {
-                        console.log('Error al registrar Firebase SW:', registrationError);
-                    });
-            });
-        }
+        // OneSignal se registra automáticamente
+        // No necesita registro manual de Service Worker
+        console.log('OneSignal se inicializará automáticamente');
     </script>
 </body>
 </html>

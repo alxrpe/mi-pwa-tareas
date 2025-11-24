@@ -298,8 +298,8 @@ function showNotification(message, duration = 3000) {
 async function initializeOneSignal() {
     try {
         // Verificar que OneSignal esté cargado
-        if (typeof window.OneSignal === 'undefined') {
-            console.log('OneSignal SDK no está cargado');
+        if (typeof window.OneSignalDeferred === 'undefined') {
+            console.log('OneSignal SDK v16 no está cargado');
             return false;
         }
 
@@ -307,24 +307,50 @@ async function initializeOneSignal() {
         const response = await fetch('./onesignal-config.json');
         const config = await response.json();
         
-        // Inicializar OneSignal
-        await window.OneSignal.init({
-            appId: config.appId,
-            safari_web_id: config.safari_web_id,
-            notifyButton: {
-                enable: false // Usamos nuestro propio botón
-            },
-            allowLocalhostAsSecureOrigin: true, // Para testing local
+        // Usar el nuevo método de inicialización de OneSignal v16
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        window.OneSignalDeferred.push(async function(OneSignal) {
+            await OneSignal.init({
+                appId: config.appId,
+                safari_web_id: config.safari_web_id,
+                allowLocalhostAsSecureOrigin: true,
+                notifyButton: {
+                    enable: false // Usamos nuestro propio botón
+                }
+            });
+            
+            // Guardar referencia global
+            window.OneSignalInstance = OneSignal;
+            OneSignal = OneSignal;
+            isOneSignalReady = true;
+            
+            console.log('OneSignal v16 inicializado correctamente');
+            
+            // Configurar listeners
+            OneSignal.Notifications.addEventListener('permissionChange', function(event) {
+                console.log('Permisos de notificación cambiaron:', event);
+                const isSubscribed = event.permission === 'granted';
+                notificationPermission = isSubscribed;
+                updateNotificationButton(isSubscribed);
+                
+                if (isSubscribed) {
+                    showNotification('🔔 ¡Notificaciones push activadas exitosamente!');
+                    // Mostrar información de debug
+                    OneSignal.User.PushSubscription.id.then(function(userId) {
+                        if (userId) {
+                            console.log('OneSignal User ID:', userId);
+                            showNotification(`✅ Registrado en OneSignal. ID: ${userId.substring(0, 8)}...`);
+                        }
+                    });
+                }
+            });
         });
-
-        OneSignal = window.OneSignal;
-        isOneSignalReady = true;
         
-        console.log('OneSignal inicializado correctamente');
+        isOneSignalReady = true;
         return true;
         
     } catch (error) {
-        console.error('Error inicializando OneSignal:', error);
+        console.error('Error inicializando OneSignal v16:', error);
         showNotification('⚠️ No se pudieron cargar las notificaciones push');
         return false;
     }
@@ -366,6 +392,11 @@ async function initializeNotifications() {
             
             if (isSubscribed) {
                 showNotification('🔔 ¡Notificaciones push activadas exitosamente!');
+                // Mostrar información de debug
+                OneSignal.getUserId().then(function(userId) {
+                    console.log('OneSignal User ID:', userId);
+                    showNotification(`✅ Registrado en OneSignal. ID: ${userId.substring(0, 8)}...`);
+                });
             }
         });
         
@@ -378,24 +409,34 @@ async function initializeNotifications() {
 // Solicitar permisos y suscribirse a OneSignal
 async function requestNotificationPermission() {
     try {
-        if (!isOneSignalReady || !OneSignal) {
+        if (!isOneSignalReady || !window.OneSignalInstance) {
             showNotification('❌ OneSignal no está configurado. Revisa la configuración.');
             return;
         }
 
+        const OneSignal = window.OneSignalInstance;
+
         // Verificar si ya está suscrito
-        const isSubscribed = await OneSignal.isPushNotificationsEnabled();
+        const permission = await OneSignal.Notifications.permission;
         
-        if (isSubscribed) {
+        if (permission === 'granted') {
             showNotification('✅ Ya tienes las notificaciones activadas');
+            notificationPermission = true;
+            updateNotificationButton(true);
             return;
         }
 
         // Solicitar permisos de notificación
-        await OneSignal.showSlidedownPrompt();
+        const result = await OneSignal.Notifications.requestPermission();
         
-        // Alternativamente, suscribir directamente:
-        // await OneSignal.registerForPushNotifications();
+        if (result === 'granted') {
+            notificationPermission = true;
+            updateNotificationButton(true);
+            showNotification('🔔 ¡Notificaciones push activadas exitosamente!');
+        } else {
+            updateNotificationButton(false);
+            showNotification('🔕 Notificaciones denegadas. Activa desde configuración del navegador.');
+        }
         
     } catch (error) {
         console.error('Error solicitando permisos:', error);
@@ -414,45 +455,34 @@ async function requestNotificationPermission() {
 // Enviar notificación OneSignal
 async function sendOneSignalNotification(title, message) {
     try {
-        if (!isOneSignalReady || !OneSignal) {
+        if (!isOneSignalReady || !window.OneSignalInstance) {
             console.log('OneSignal no disponible, usando notificación local');
             sendLocalNotification(title, message);
             return;
         }
 
-        // Obtener el Player ID (usuario único)
-        const playerId = await OneSignal.getUserId();
+        const OneSignal = window.OneSignalInstance;
+
+        // Verificar si el usuario está suscrito
+        const permission = await OneSignal.Notifications.permission;
         
-        if (!playerId) {
+        if (permission !== 'granted') {
             console.log('Usuario no suscrito, usando notificación local');
             sendLocalNotification(title, message);
             return;
         }
 
-        // En un entorno real, esto se haría desde tu servidor backend
-        // OneSignal requiere una clave de API REST para enviar desde el cliente
+        // Obtener el Player ID (usuario único) - API v16
+        const userId = await OneSignal.User.PushSubscription.id;
         
-        console.log('OneSignal Player ID:', playerId);
-        console.log('Notificación para enviar:', { title, message });
+        console.log('Enviando notificación OneSignal v16:', { userId, title, message });
+
+        // Con la nueva API, las notificaciones se manejan automáticamente
+        // cuando se envían desde el dashboard de OneSignal o via REST API
         
-        // Por ahora, mostrar notificación local + mensaje de info
+        // Por ahora mostramos notificación local como confirmación
         sendLocalNotification(title, message);
-        showNotification('📤 Notificación enviada (en desarrollo)');
-        
-        // TODO: Implementar llamada a API backend para enviar vía OneSignal
-        /*
-        const response = await fetch('/api/send-onesignal-notification', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                player_id: playerId,
-                title: title,
-                message: message
-            })
-        });
-        */
+        console.log('Notificación local enviada como confirmación');
         
     } catch (error) {
         console.error('Error enviando notificación OneSignal:', error);

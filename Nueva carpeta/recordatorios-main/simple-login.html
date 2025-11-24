@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React Login - Versión Simple</title>
+    <style>
+        /* Reset y estilos globales */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Contenedor del login */
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-title {
+            color: #333;
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .login-subtitle {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 30px;
+        }
+
+        /* Formulario */
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            text-align: left;
+        }
+
+        .form-label {
+            display: block;
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-input.error {
+            border-color: #e74c3c;
+            background: #fdf2f2;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            font-size: 12px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* Botón */
+        .login-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        .login-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .dashboard-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .dashboard-header h1 {
+            color: #333;
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .logout-button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .logout-button:hover {
+            background: #c0392b;
+            transform: translateY(-1px);
+        }
+
+        .dashboard-content {
+            color: #666;
+            line-height: 1.6;
+            text-align: left;
+        }
+
+        .dashboard-content p {
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .general-error {
+            background: #fdf2f2;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            display: none;
+        }
+
+        .general-error.show {
+            display: block;
+        }
+
+        .credentials-info {
+            font-size: 14px;
+            color: #666;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .login-card, .dashboard {
+                padding: 30px 20px;
+                margin: 10px;
+            }
+            
+            .login-title {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <!-- Login Form -->
+        <div id="loginContainer" class="login-container">
+            <div class="login-card">
+                <h1 class="login-title">Iniciar Sesión</h1>
+                <p class="login-subtitle">Ingresa tus credenciales para acceder</p>
+                
+                <div id="generalError" class="general-error"></div>
+
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="username" class="form-label">Nombre de Usuario</label>
+                        <input type="text" id="username" name="username" class="form-input" 
+                               placeholder="Ingresa tu nombre de usuario">
+                        <div id="usernameError" class="error-message"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password" class="form-label">Contraseña</label>
+                        <input type="password" id="password" name="password" class="form-input" 
+                               placeholder="Ingresa tu contraseña">
+                        <div id="passwordError" class="error-message"></div>
+                    </div>
+
+                    <button type="submit" id="loginButton" class="login-button">
+                        Iniciar Sesión
+                    </button>
+                </form>
+
+                <div class="credentials-info">
+                    <strong>Credenciales de prueba:</strong><br>
+                    Usuario: <strong>admin</strong><br>
+                    Contraseña: <strong>123456</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dashboard" class="login-container hidden">
+            <div class="dashboard">
+                <div class="dashboard-header">
+                    <h1>¡Bienvenido, <span id="welcomeUser"></span>!</h1>
+                    <button id="logoutButton" class="logout-button">Cerrar Sesión</button>
+                </div>
+                <div class="dashboard-content">
+                    <p>Has iniciado sesión exitosamente.</p>
+                    <p>Aquí puedes continuar desarrollando tu aplicación.</p>
+                    <p><strong>Próximos pasos sugeridos:</strong></p>
+                    <ul>
+                        <li>Implementar base de datos</li>
+                        <li>Crear sistema de registro</li>
+                        <li>Agregar autenticación real</li>
+                        <li>Desarrollar funcionalidades CRUD</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Estado de la aplicación
+        let isAuthenticated = false;
+        let currentUser = null;
+
+        // Elementos del DOM
+        const loginContainer = document.getElementById('loginContainer');
+        const dashboard = document.getElementById('dashboard');
+        const loginForm = document.getElementById('loginForm');
+        const loginButton = document.getElementById('loginButton');
+        const logoutButton = document.getElementById('logoutButton');
+        const generalError = document.getElementById('generalError');
+        const welcomeUser = document.getElementById('welcomeUser');
+
+        // Campos del formulario
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const usernameError = document.getElementById('usernameError');
+        const passwordError = document.getElementById('passwordError');
+
+        // Función para mostrar errores
+        function showError(element, message) {
+            element.textContent = message;
+            element.classList.add('show');
+            element.previousElementSibling.classList.add('error');
+        }
+
+        // Función para limpiar errores
+        function clearError(element) {
+            element.textContent = '';
+            element.classList.remove('show');
+            element.previousElementSibling.classList.remove('error');
+        }
+
+        // Función para limpiar todos los errores
+        function clearAllErrors() {
+            clearError(usernameError);
+            clearError(passwordError);
+            generalError.classList.remove('show');
+            generalError.textContent = '';
+        }
+
+        // Validación del formulario
+        function validateForm() {
+            clearAllErrors();
+            let isValid = true;
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username) {
+                showError(usernameError, 'El nombre de usuario es requerido');
+                isValid = false;
+            } else if (username.length < 3) {
+                showError(usernameError, 'El nombre de usuario debe tener al menos 3 caracteres');
+                isValid = false;
+            }
+
+            if (!password) {
+                showError(passwordError, 'La contraseña es requerida');
+                isValid = false;
+            } else if (password.length < 6) {
+                showError(passwordError, 'La contraseña debe tener al menos 6 caracteres');
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
+        // Función para mostrar el dashboard
+        function showDashboard(user) {
+            loginContainer.classList.add('hidden');
+            dashboard.classList.remove('hidden');
+            welcomeUser.textContent = user.username;
+            currentUser = user;
+            isAuthenticated = true;
+        }
+
+        // Función para mostrar el login
+        function showLogin() {
+            dashboard.classList.add('hidden');
+            loginContainer.classList.remove('hidden');
+            currentUser = null;
+            isAuthenticated = false;
+            
+            // Limpiar formulario
+            usernameInput.value = '';
+            passwordInput.value = '';
+            clearAllErrors();
+        }
+
+        // Simulación de login
+        async function attemptLogin(username, password) {
+            loginButton.disabled = true;
+            loginButton.textContent = 'Iniciando sesión...';
+
+            // Simular delay de red
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Validación simple para demostración
+            if (username === 'admin' && password === '123456') {
+                showDashboard({
+                    username: username,
+                    email: 'admin@ejemplo.com',
+                    id: 1
+                });
+            } else {
+                generalError.textContent = 'Credenciales incorrectas. Intenta con: admin / 123456';
+                generalError.classList.add('show');
+            }
+
+            loginButton.disabled = false;
+            loginButton.textContent = 'Iniciar Sesión';
+        }
+
+        // Event listeners
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!validateForm()) {
+                return;
+            }
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            await attemptLogin(username, password);
+        });
+
+        logoutButton.addEventListener('click', () => {
+            showLogin();
+        });
+
+        // Limpiar errores cuando el usuario empiece a escribir
+        usernameInput.addEventListener('input', () => clearError(usernameError));
+        passwordInput.addEventListener('input', () => clearError(passwordError));
+
+        console.log('🚀 React Login App cargada correctamente');
+        console.log('📝 Credenciales de prueba: admin / 123456');
+    </script>
+</body>
+</html>

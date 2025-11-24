@@ -10,15 +10,19 @@ const taskCount = document.getElementById('taskCount');
 const completedCount = document.getElementById('completedCount');
 const emptyState = document.getElementById('emptyState');
 const installBtn = document.getElementById('installBtn');
+const notificationBtn = document.getElementById('notificationBtn');
 
 // Variables para PWA
 let deferredPrompt;
+let notificationPermission = false;
+let swRegistration = null;
 
 // Inicialización
 document.addEventListener('DOMContentLoaded', () => {
     loadTasks();
     updateStats();
     updateDisplay();
+    initializeNotifications();
     
     // Event listeners
     addBtn.addEventListener('click', addTask);
@@ -37,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     installBtn.addEventListener('click', installPWA);
+    notificationBtn.addEventListener('click', requestNotificationPermission);
     
     // Detectar si ya está instalada
     window.addEventListener('appinstalled', () => {
@@ -71,8 +76,9 @@ function addTask() {
     taskInput.value = '';
     taskInput.focus();
     
-    // Feedback visual
+    // Feedback visual y notificación push
     showNotification('✅ Tarea añadida exitosamente');
+    sendPushNotification('📝 Nueva tarea creada', `"${taskText}" ha sido añadida a tu lista`);
 }
 
 // Función para eliminar tarea
@@ -278,6 +284,153 @@ function showNotification(message, duration = 3000) {
     }, duration);
 }
 
+// === SISTEMA DE NOTIFICACIONES ===
+
+// Inicializar notificaciones
+async function initializeNotifications() {
+    // Verificar soporte de notificaciones
+    if (!('Notification' in window)) {
+        console.log('Este navegador no soporta notificaciones');
+        return;
+    }
+    
+    // Verificar soporte de Service Worker
+    if (!('serviceWorker' in navigator)) {
+        console.log('Service Worker no soportado');
+        return;
+    }
+    
+    try {
+        // Registrar Service Worker
+        swRegistration = await navigator.serviceWorker.register('sw.js');
+        console.log('Service Worker registrado para notificaciones');
+        
+        // Solicitar permisos de notificación
+        await requestNotificationPermission();
+        
+        // Actualizar botón según estado actual
+        updateNotificationButton(notificationPermission);
+        
+    } catch (error) {
+        console.error('Error inicializando notificaciones:', error);
+    }
+}
+
+// Solicitar permisos de notificación
+async function requestNotificationPermission() {
+    if (Notification.permission === 'granted') {
+        notificationPermission = true;
+        updateNotificationButton(true);
+        showNotification('🔔 Notificaciones activadas');
+        return;
+    }
+    
+    if (Notification.permission !== 'denied') {
+        const permission = await Notification.requestPermission();
+        
+        if (permission === 'granted') {
+            notificationPermission = true;
+            updateNotificationButton(true);
+            showNotification('🔔 ¡Notificaciones activadas! Recibirás alertas de nuevas tareas');
+        } else {
+            updateNotificationButton(false);
+            showNotification('🔕 Notificaciones desactivadas. Puedes activarlas desde configuración del navegador');
+        }
+    } else {
+        updateNotificationButton(false);
+        showNotification('🔕 Notificaciones bloqueadas. Actívalas desde configuración del navegador');
+    }
+}
+
+// Actualizar estado del botón de notificaciones
+function updateNotificationButton(enabled) {
+    if (enabled) {
+        notificationBtn.textContent = '🔔 Notificaciones ON';
+        notificationBtn.classList.add('active');
+        notificationBtn.disabled = false;
+    } else {
+        notificationBtn.textContent = '🔔 Activar Notificaciones';
+        notificationBtn.classList.remove('active');
+        notificationBtn.disabled = false;
+    }
+}
+
+// Enviar notificación push
+function sendPushNotification(title, body, options = {}) {
+    if (!notificationPermission || Notification.permission !== 'granted') {
+        return;
+    }
+    
+    const defaultOptions = {
+        body: body,
+        icon: 'icons/icon-192x192.svg',
+        badge: 'icons/icon-72x72.svg',
+        tag: 'task-notification',
+        renotify: true,
+        requireInteraction: false,
+        silent: false,
+        vibrate: [200, 100, 200],
+        data: {
+            dateOfArrival: Date.now(),
+            primaryKey: Math.random()
+        },
+        actions: [
+            {
+                action: 'view',
+                title: '👁️ Ver tareas',
+                icon: 'icons/icon-72x72.svg'
+            },
+            {
+                action: 'close',
+                title: '❌ Cerrar',
+                icon: 'icons/icon-72x72.svg'
+            }
+        ]
+    };
+    
+    const finalOptions = { ...defaultOptions, ...options };
+    
+    try {
+        // Usar Service Worker para mostrar la notificación
+        if (swRegistration && swRegistration.showNotification) {
+            swRegistration.showNotification(title, finalOptions);
+        } else {
+            // Fallback para navegadores que no soportan SW notifications
+            new Notification(title, finalOptions);
+        }
+        
+        console.log('Notificación enviada:', title);
+        
+    } catch (error) {
+        console.error('Error enviando notificación:', error);
+    }
+}
+
+// Manejar clics en notificaciones (para Service Worker)
+function handleNotificationClick(event) {
+    const notification = event.notification;
+    const action = event.action;
+    
+    if (action === 'close') {
+        notification.close();
+    } else {
+        // Abrir o enfocar la app
+        event.waitUntil(
+            clients.matchAll().then(clientList => {
+                for (const client of clientList) {
+                    if (client.url === '/' && 'focus' in client) {
+                        return client.focus();
+                    }
+                }
+                if (clients.openWindow) {
+                    return clients.openWindow('/');
+                }
+            })
+        );
+        notification.close();
+    }
+}
+
 // Funciones de utilidad para debugging
 window.debugPWA = {
     clearAllData() {
@@ -322,5 +475,22 @@ window.debugPWA = {
         };
         console.log('Datos exportados:', JSON.stringify(data, null, 2));
         return data;
+    },
+    
+    // Funciones de notificaciones para debug
+    testNotification() {
+        sendPushNotification('🔔 Notificación de prueba', 'Esta es una prueba del sistema de notificaciones');
+    },
+    
+    requestNotifications() {
+        requestNotificationPermission();
+    },
+    
+    checkNotificationStatus() {
+        console.log('Estado de notificaciones:', {
+            supported: 'Notification' in window,
+            permission: Notification.permission,
+            enabled: notificationPermission
+        });
     }
 };

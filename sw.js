@@ -98,3 +98,47 @@ self.addEventListener('message', event => {
     self.skipWaiting();
   }
 });
+
+// === MANEJO DE NOTIFICACIONES ===
+
+// Manejar clics en notificaciones
+self.addEventListener('notificationclick', event => {
+  console.log('Notificación clickeada:', event);
+  
+  const notification = event.notification;
+  const action = event.action;
+  
+  notification.close();
+  
+  if (action === 'close') {
+    return;
+  }
+  
+  // Abrir o enfocar la aplicación
+  event.waitUntil(
+    clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    }).then(clientList => {
+      // Buscar si ya hay una ventana abierta
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      
+      // Si no hay ventana abierta, abrir una nueva
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
+  );
+});
+
+// Manejar cierre de notificaciones
+self.addEventListener('notificationclose', event => {
+  console.log('Notificación cerrada:', event);
+  
+  // Aquí podríamos enviar estadísticas de engagement
+  // trackNotificationInteraction('closed', event.notification.tag);
+});

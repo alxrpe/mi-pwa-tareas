@@ -234,9 +234,15 @@ footer {
     color: #495057;
 }
 
-.install-btn {
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.install-btn, .notification-btn {
     padding: 12px 24px;
-    background: linear-gradient(45deg, #007bff, #0056b3);
     color: white;
     border: none;
     border-radius: 10px;
@@ -244,11 +250,36 @@ footer {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
+    flex: 1;
+    min-width: 140px;
+}
+
+.install-btn {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+}
+
+.notification-btn {
+    background: linear-gradient(45deg, #28a745, #1e7e34);
+}
+
+.install-btn:hover, .notification-btn:hover {
+    transform: translateY(-2px);
 }
 
 .install-btn:hover {
-    transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
+}
+
+.notification-btn:hover {
+    box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+}
+
+.notification-btn.active {
+    background: linear-gradient(45deg, #6c757d, #495057);
+}
+
+.notification-btn.active:hover {
+    box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
 }
 
 /* Responsive */
@@ -281,6 +312,14 @@ footer {
     
     .task-item {
         padding: 15px;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .install-btn, .notification-btn {
+        min-width: auto;
     }
 }
 
